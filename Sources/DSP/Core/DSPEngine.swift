@@ -77,6 +77,9 @@ public final class DSPEngine: ObservableObject {
         self.spectrumData = spectrum
         self.waterfallLine = WaterfallLine(from: spectrum)
 
+        // 1b. Run signal detection
+        SignalDetector.shared.analyzeSpectrum(spectrum, centerFrequency: buffer.centerFrequency, sampleRate: buffer.sampleRate)
+
         // 2. Calculate signal strength
         signalStrength = calculateSignalStrength(spectrum)
 

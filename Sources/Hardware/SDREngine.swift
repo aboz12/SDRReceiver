@@ -27,6 +27,25 @@ public final class SDREngine: ObservableObject {
         didSet { applyGainMode() }
     }
 
+    // Sample Rate (determines visible bandwidth on waterfall)
+    @Published public var sampleRate: Double = 2_400_000 {
+        didSet { applySampleRate() }
+    }
+
+    // Available sample rates
+    public let availableSampleRates: [Double] = [
+        240_000,    // 240 kHz - Narrow
+        480_000,    // 480 kHz
+        960_000,    // 960 kHz
+        1_024_000,  // 1.024 MHz
+        1_440_000,  // 1.44 MHz
+        1_920_000,  // 1.92 MHz
+        2_048_000,  // 2.048 MHz
+        2_400_000,  // 2.4 MHz - Default
+        2_880_000,  // 2.88 MHz
+        3_200_000   // 3.2 MHz - Wide
+    ]
+
     // Components
     @Published public var dspEngine: DSPEngine
     public let audioEngine: AudioEngine
@@ -66,8 +85,8 @@ public final class SDREngine: ObservableObject {
         dev.centerFrequency = frequency
         dev.gain = gain
         dev.gainMode = gainMode
-        dev.sampleRate = 2_400_000
-        dev.bandwidth = 2_400_000
+        dev.sampleRate = sampleRate
+        dev.bandwidth = sampleRate
 
         // Start streaming
         try dev.startStreaming()
@@ -120,5 +139,21 @@ public final class SDREngine: ObservableObject {
 
     private func applyGainMode() {
         device?.gainMode = gainMode
+    }
+
+    private func applySampleRate() {
+        device?.sampleRate = sampleRate
+        device?.bandwidth = sampleRate
+    }
+
+    /// Get the visible frequency span (same as sample rate)
+    public var visibleBandwidth: Double {
+        sampleRate
+    }
+
+    /// Get frequency range visible on waterfall
+    public var visibleFrequencyRange: ClosedRange<Double> {
+        let halfSpan = sampleRate / 2
+        return (frequency - halfSpan)...(frequency + halfSpan)
     }
 }

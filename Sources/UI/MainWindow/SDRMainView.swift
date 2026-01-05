@@ -6,6 +6,7 @@ struct SDRMainView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var sdrEngine: SDREngine
     @ObservedObject var themeManager = ThemeManager.shared
+    @ObservedObject var signalDetector = SignalDetector.shared
 
     @State private var showingMemoryBank = false
     @State private var showingScanner = false
@@ -13,6 +14,10 @@ struct SDRMainView: View {
     @State private var showingSettings = false
     @State private var showingDecoders = false
     @State private var showingStreaming = false
+    @State private var showingPresets = true
+    @State private var showingSignalPanel = false
+    @State private var showingMiniMode = false
+    @State private var showBandPlan = true
     @State private var bottomPanelHeight: CGFloat = 250
 
     var body: some View {
@@ -48,32 +53,71 @@ struct SDRMainView: View {
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
 
+                    // Frequency presets bar
+                    if showingPresets {
+                        FrequencyPresetsView { preset in
+                            sdrEngine.tuneTo(preset.frequency)
+                            if let mode = DemodulationMode(rawValue: preset.mode) {
+                                sdrEngine.dspEngine.demodulationMode = mode
+                            }
+                            sdrEngine.dspEngine.filterBandwidth = preset.bandwidth
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                    }
+
                     // Spectrum and Waterfall
                     GeometryReader { geometry in
                         VSplitView {
-                            VStack(spacing: 12) {
-                                // Spectrum display
-                                if appState.showSpectrum {
-                                    InteractiveSpectrumView(dspEngine: sdrEngine.dspEngine)
-                                        .frame(height: geometry.size.height * 0.35)
-                                        .background {
-                                            GlassPanel(cornerRadius: 16, tintColor: .green) {
-                                                Color.clear
-                                            }
-                                        }
+                            VStack(spacing: 0) {
+                                // Band plan overlay
+                                if showBandPlan {
+                                    BandPlanOverlay(
+                                        visibleRange: sdrEngine.visibleFrequencyRange,
+                                        width: geometry.size.width - 32
+                                    )
+                                    .padding(.horizontal, 16)
                                 }
 
-                                // Waterfall display
-                                if appState.showWaterfall {
-                                    InteractiveWaterfallView(dspEngine: sdrEngine.dspEngine)
-                                        .background {
-                                            GlassPanel(cornerRadius: 16, tintColor: .blue) {
-                                                Color.clear
+                                VStack(spacing: 12) {
+                                    // Spectrum display
+                                    if appState.showSpectrum {
+                                        ZStack(alignment: .topTrailing) {
+                                            InteractiveSpectrumView(dspEngine: sdrEngine.dspEngine)
+                                                .background {
+                                                    GlassPanel(cornerRadius: 16, tintColor: .green) {
+                                                        Color.clear
+                                                    }
+                                                }
+
+                                            // Spectrum controls overlay
+                                            HStack(spacing: 8) {
+                                                Toggle("Band Plan", isOn: $showBandPlan)
+                                                    .toggleStyle(.checkbox)
+                                                    .font(.system(size: 10))
+
+                                                SampleRatePicker()
                                             }
+                                            .padding(8)
+                                            .background(.ultraThinMaterial)
+                                            .cornerRadius(8)
+                                            .padding(8)
                                         }
+                                        .frame(height: geometry.size.height * 0.35)
+                                    }
+
+                                    // Waterfall display
+                                    if appState.showWaterfall {
+                                        InteractiveWaterfallView(dspEngine: sdrEngine.dspEngine)
+                                            .background {
+                                                GlassPanel(cornerRadius: 16, tintColor: .blue) {
+                                                    Color.clear
+                                                }
+                                            }
+                                    }
                                 }
+                                .padding(16)
                             }
-                            .padding(16)
 
                             // Bottom panel (decoders, scanner, etc.)
                             if showingDecoders || showingScanner || showingRecording {
@@ -448,6 +492,23 @@ struct GlassSidebarView: View {
                     }
                 }
 
+                // Signal Analysis Card
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Signal Analysis", systemImage: "waveform.path.ecg.rectangle")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.mint)
+
+                        SignalHistoryView()
+
+                        Divider()
+
+                        DetectedSignalsView { signal in
+                            sdrEngine.tuneTo(signal.frequency)
+                        }
+                    }
+                }
+
                 // Features Card
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
@@ -593,39 +654,64 @@ struct GlassAudioMeter: View {
 
 struct GlassFrequencyBar: View {
     @EnvironmentObject var sdrEngine: SDREngine
+    @ObservedObject var bookmarkManager = QuickBookmarkManager.shared
     @State private var isEditing = false
     @State private var editText = ""
 
     var body: some View {
-        GlassPanel(cornerRadius: 20, tintColor: .cyan) {
-            HStack(spacing: 20) {
-                // Tune down buttons
-                HStack(spacing: 4) {
-                    TuneButton(label: "-100k", offset: -100000, tint: .red)
-                    TuneButton(label: "-10k", offset: -10000, tint: .orange)
-                    TuneButton(label: "-1k", offset: -1000, tint: .yellow)
-                }
-
-                Spacer()
-
-                // Main frequency display
-                GlassFrequencyDisplay(frequency: sdrEngine.frequency, tint: .cyan)
-                    .onTapGesture {
-                        editText = String(format: "%.0f", sdrEngine.frequency)
-                        isEditing = true
+        VStack(spacing: 0) {
+            // Main frequency bar
+            GlassPanel(cornerRadius: 20, tintColor: .cyan) {
+                HStack(spacing: 20) {
+                    // Tune down buttons
+                    HStack(spacing: 4) {
+                        TuneButton(label: "-100k", offset: -100000, tint: .red)
+                        TuneButton(label: "-10k", offset: -10000, tint: .orange)
+                        TuneButton(label: "-1k", offset: -1000, tint: .yellow)
                     }
 
-                Spacer()
+                    Spacer()
 
-                // Tune up buttons
-                HStack(spacing: 4) {
-                    TuneButton(label: "+1k", offset: 1000, tint: .yellow)
-                    TuneButton(label: "+10k", offset: 10000, tint: .orange)
-                    TuneButton(label: "+100k", offset: 100000, tint: .red)
+                    // Interactive frequency display with digit scroll
+                    InteractiveFrequencyDisplay(
+                        frequency: Binding(
+                            get: { sdrEngine.frequency },
+                            set: { sdrEngine.tuneTo($0) }
+                        ),
+                        tint: .cyan,
+                        onBookmark: {
+                            bookmarkManager.addBookmark(
+                                frequency: sdrEngine.frequency,
+                                mode: sdrEngine.dspEngine.demodulationMode.rawValue
+                            )
+                        }
+                    )
+
+                    Spacer()
+
+                    // Tune up buttons
+                    HStack(spacing: 4) {
+                        TuneButton(label: "+1k", offset: 1000, tint: .yellow)
+                        TuneButton(label: "+10k", offset: 10000, tint: .orange)
+                        TuneButton(label: "+100k", offset: 100000, tint: .red)
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+
+            // Quick bookmark bar
+            QuickBookmarkBar(
+                manager: bookmarkManager,
+                onSelect: { bookmark in
+                    sdrEngine.tuneTo(bookmark.frequency)
+                    if let mode = DemodulationMode(rawValue: bookmark.mode) {
+                        sdrEngine.dspEngine.demodulationMode = mode
+                    }
+                },
+                tint: .cyan
+            )
+            .cornerRadius(12)
         }
         .sheet(isPresented: $isEditing) {
             FrequencyEditSheet(frequency: $editText) {
