@@ -99,22 +99,17 @@ public final class SDREngine: ObservableObject {
 
         // Apply bias-t setting (important for L-band LNA)
         dev.biasTee = biasTee
-        print("SDREngine: Starting with Bias-T = \(biasTee)")
 
         // Start streaming
         try dev.startStreaming()
-        fputs("SDREngine: Streaming started\n", stderr)
 
         // Start audio
         try audioEngine.start()
-        fputs("SDREngine: Audio started\n", stderr)
 
         // Start DSP processing
-        fputs("SDREngine: Calling dspEngine.startProcessing\n", stderr)
         dspEngine.startProcessing(from: dev.sampleStream)
 
         isRunning = true
-        fputs("SDREngine: All started successfully\n", stderr)
         lastError = nil
     }
 

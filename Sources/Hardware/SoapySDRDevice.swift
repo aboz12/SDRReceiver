@@ -298,8 +298,6 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
                 SoapySDRDevice_writeSetting(dev, keyPtr, valuePtr)
             }
         }
-
-        print("SoapySDR: Bias-T set to \(_biasTee)")
     }
 
     // MARK: - Streaming
@@ -328,7 +326,6 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
         }
 
         _isStreaming = true
-        fputs("SoapySDR: Stream activated, starting loop...\n", stderr)
 
         // Start background reading task
         streamTask = Task { [weak self] in
@@ -337,29 +334,19 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
     }
 
     private func streamLoop() async {
-        guard let dev = device, let strm = stream else {
-            fputs("SoapySDR: streamLoop - device or stream is nil!\n", stderr)
-            return
-        }
-        fputs("SoapySDR: streamLoop started\n", stderr)
+        guard let dev = device, let strm = stream else { return }
 
         let bufferSize = 65536
         var buffer = [Float](repeating: 0, count: bufferSize * 2)  // I/Q interleaved
         var flags: Int32 = 0
         var timeNs: Int64 = 0
 
-        var debugCounter = 0
         while !Task.isCancelled && _isStreaming {
             let samplesRead = buffer.withUnsafeMutableBufferPointer { bufPtr in
                 var buffers: [UnsafeMutableRawPointer?] = [UnsafeMutableRawPointer(bufPtr.baseAddress)]
                 return buffers.withUnsafeMutableBufferPointer { buffersPtr in
                     SoapySDRDevice_readStream(dev, strm, buffersPtr.baseAddress, bufferSize, &flags, &timeNs, 100000)
                 }
-            }
-
-            debugCounter += 1
-            if debugCounter % 100 == 1 {
-                fputs("SoapySDR: readStream returned \(samplesRead) samples\n", stderr)
             }
 
             if samplesRead > 0 {
@@ -381,16 +368,7 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
                     overflowDetected: (flags & Int32(SOAPY_SDR_OVERFLOW)) != 0
                 )
 
-                if let cont = streamContinuation {
-                    cont.yield(iqBuffer)
-                    if debugCounter % 100 == 1 {
-                        fputs("SoapySDR: Yielded buffer with \(count) samples\n", stderr)
-                    }
-                } else {
-                    if debugCounter % 100 == 1 {
-                        fputs("SoapySDR: WARNING - streamContinuation is nil!\n", stderr)
-                    }
-                }
+                streamContinuation?.yield(iqBuffer)
             }
 
             // Small yield to prevent tight loop

@@ -31,23 +31,18 @@ public final class RTLSDRBiasT {
             process.waitUntilExit()
 
             let status = process.terminationStatus
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8) ?? ""
+            _ = pipe.fileHandleForReading.readDataToEndOfFile()
 
             if status == 0 {
                 isEnabled = enabled
                 lastResult = "Bias-T \(enabled ? "ON" : "OFF") - OK"
-                print("RTLSDRBiasT: Bias-T \(enabled ? "ENABLED" : "DISABLED") on device \(deviceIndex)")
-                print("RTLSDRBiasT output: \(output)")
                 return true
             } else {
                 lastResult = "Failed"
-                print("RTLSDRBiasT: Failed with status \(status): \(output)")
                 return false
             }
         } catch {
             lastResult = "Error"
-            print("RTLSDRBiasT: Failed to run rtl_biast: \(error)")
             return false
         }
     }

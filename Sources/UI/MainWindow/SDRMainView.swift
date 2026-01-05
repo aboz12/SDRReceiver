@@ -66,9 +66,7 @@ struct SDRMainView: View {
                                 } else {
                                     do {
                                         try await sdrEngine.start()
-                                        print("SDR Started successfully")
                                     } catch {
-                                        print("SDR Start Error: \(error)")
                                         startError = error.localizedDescription
                                     }
                                 }
