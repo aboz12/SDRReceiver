@@ -48,7 +48,7 @@ public final class SDREngine: ObservableObject {
 
     // Components
     @Published public var dspEngine: DSPEngine
-    public let audioEngine: AudioEngine
+    public var audioEngine: AudioEngine
 
     private var device: SoapySDRDeviceWrapper?
     private var processingTask: Task<Void, Never>?

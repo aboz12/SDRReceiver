@@ -10,7 +10,12 @@ public final class AudioEngine: ObservableObject {
     private var audioFormat: AVAudioFormat?
 
     @Published public private(set) var isRunning = false
-    @Published public private(set) var volume: Float = 1.0
+    @Published public var volume: Float = 1.0 {
+        didSet { applyVolume() }
+    }
+    @Published public var isMuted: Bool = false {
+        didSet { applyVolume() }
+    }
 
     private let sampleRate: Double = 48000
     private let bufferSize: Int = 1024
@@ -49,6 +54,9 @@ public final class AudioEngine: ObservableObject {
         player.play()
         isRunning = true
 
+        // Apply current volume settings
+        applyVolume()
+
         // Start buffer scheduling
         scheduleBuffers()
     }
@@ -61,7 +69,15 @@ public final class AudioEngine: ObservableObject {
 
     public func setVolume(_ newVolume: Float) {
         volume = max(0, min(1, newVolume))
-        audioEngine?.mainMixerNode.outputVolume = volume
+    }
+
+    public func toggleMute() {
+        isMuted.toggle()
+    }
+
+    private func applyVolume() {
+        let effectiveVolume = isMuted ? 0 : volume
+        audioEngine?.mainMixerNode.outputVolume = effectiveVolume
     }
 
     /// Write audio samples to the output

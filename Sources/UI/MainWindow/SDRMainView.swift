@@ -7,6 +7,12 @@ struct SDRMainView: View {
     @EnvironmentObject var sdrEngine: SDREngine
     @ObservedObject var themeManager = ThemeManager.shared
     @ObservedObject var signalDetector = SignalDetector.shared
+    @ObservedObject var frequencyHistory = FrequencyHistory.shared
+    @ObservedObject var peakHold = PeakHoldManager.shared
+    @ObservedObject var zoomManager = WaterfallZoomManager.shared
+    @ObservedObject var audioProcessor = AudioProcessor.shared
+    @ObservedObject var vfoManager = SplitVFOManager.shared
+    @ObservedObject var remoteServer = RemoteControlServer.shared
 
     @State private var showingMemoryBank = false
     @State private var showingScanner = false
@@ -18,6 +24,10 @@ struct SDRMainView: View {
     @State private var showingSignalPanel = false
     @State private var showingMiniMode = false
     @State private var showBandPlan = true
+    @State private var showingDirectInput = false
+    @State private var showingAudioProcessing = false
+    @State private var showingRemoteControl = false
+    @State private var showingSplitVFO = false
     @State private var bottomPanelHeight: CGFloat = 250
 
     var body: some View {
@@ -37,16 +47,51 @@ struct SDRMainView: View {
                     showingMemoryBank: $showingMemoryBank,
                     showingScanner: $showingScanner,
                     showingRecording: $showingRecording,
-                    showingSettings: $showingSettings
+                    showingSettings: $showingSettings,
+                    showingAudioProcessing: $showingAudioProcessing,
+                    showingSplitVFO: $showingSplitVFO
                 )
                 .frame(minWidth: 280, maxWidth: 350)
 
                 // Main content area
                 VStack(spacing: 0) {
-                    // VFO Bar
-                    MultiVFOView()
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
+                    // VFO Bar with history navigation
+                    HStack(spacing: 12) {
+                        // History navigation
+                        FrequencyHistoryNav { entry in
+                            sdrEngine.tuneTo(entry.frequency)
+                            if let mode = DemodulationMode(rawValue: entry.mode) {
+                                sdrEngine.dspEngine.demodulationMode = mode
+                            }
+                        }
+
+                        // Split VFO selector
+                        if showingSplitVFO {
+                            CompactSplitVFOSelector()
+                        }
+
+                        MultiVFOView()
+
+                        Spacer()
+
+                        // Remote control indicator
+                        if remoteServer.isRunning {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(.green)
+                                    .frame(width: 6, height: 6)
+                                Text("Remote")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.ultraThinMaterial.opacity(0.5))
+                            .cornerRadius(6)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
 
                     // Frequency bar
                     GlassFrequencyBar()
@@ -83,24 +128,46 @@ struct SDRMainView: View {
                                     // Spectrum display
                                     if appState.showSpectrum {
                                         ZStack(alignment: .topTrailing) {
-                                            InteractiveSpectrumView(dspEngine: sdrEngine.dspEngine)
-                                                .background {
-                                                    GlassPanel(cornerRadius: 16, tintColor: .green) {
-                                                        Color.clear
-                                                    }
+                                            ZStack {
+                                                InteractiveSpectrumView(dspEngine: sdrEngine.dspEngine)
+                                                    .sdrContextMenu(
+                                                        frequency: sdrEngine.frequency,
+                                                        signalStrength: sdrEngine.dspEngine.signalStrength
+                                                    )
+
+                                                // Peak hold overlay
+                                                if peakHold.enabled, let spectrum = sdrEngine.dspEngine.spectrumData {
+                                                    EnhancedSpectrumOverlay(
+                                                        centerFrequency: sdrEngine.frequency,
+                                                        sampleRate: sdrEngine.sampleRate,
+                                                        spectrumData: spectrum.magnitudes
+                                                    )
                                                 }
+                                            }
+                                            .background {
+                                                GlassPanel(cornerRadius: 16, tintColor: .green) {
+                                                    Color.clear
+                                                }
+                                            }
 
                                             // Spectrum controls overlay
-                                            HStack(spacing: 8) {
-                                                Toggle("Band Plan", isOn: $showBandPlan)
-                                                    .toggleStyle(.checkbox)
-                                                    .font(.system(size: 10))
+                                            VStack(alignment: .trailing, spacing: 8) {
+                                                HStack(spacing: 8) {
+                                                    Toggle("Band Plan", isOn: $showBandPlan)
+                                                        .toggleStyle(.checkbox)
+                                                        .font(.system(size: 10))
 
-                                                SampleRatePicker()
+                                                    SampleRatePicker()
+                                                }
+                                                .padding(8)
+                                                .background(.ultraThinMaterial)
+                                                .cornerRadius(8)
+
+                                                HStack(spacing: 8) {
+                                                    PeakHoldControlsView()
+                                                    ZoomControlsView()
+                                                }
                                             }
-                                            .padding(8)
-                                            .background(.ultraThinMaterial)
-                                            .cornerRadius(8)
                                             .padding(8)
                                         }
                                         .frame(height: geometry.size.height * 0.35)
@@ -143,7 +210,7 @@ struct SDRMainView: View {
                 }
             }
         }
-        .toolbar {
+        .toolbar(content: {
             GlassToolbar(
                 showingDecoders: $showingDecoders,
                 showingScanner: $showingScanner,
@@ -151,7 +218,7 @@ struct SDRMainView: View {
                 showingStreaming: $showingStreaming,
                 showingSettings: $showingSettings
             )
-        }
+        })
         .sheet(isPresented: $showingSettings) {
             SDRSettingsView()
         }
@@ -159,7 +226,45 @@ struct SDRMainView: View {
             NetworkStreamingView()
                 .frame(width: 400, height: 350)
         }
+        .sheet(isPresented: $showingDirectInput) {
+            DirectFrequencyInput(isPresented: $showingDirectInput) { frequency in
+                sdrEngine.tuneTo(frequency)
+                frequencyHistory.recordFrequency(frequency, mode: sdrEngine.dspEngine.demodulationMode.rawValue)
+            }
+        }
+        .sheet(isPresented: $showingAudioProcessing) {
+            AudioProcessingPanel()
+                .frame(width: 400, height: 500)
+        }
+        .sheet(isPresented: $showingRemoteControl) {
+            RemoteControlSettingsView()
+                .frame(width: 450, height: 550)
+        }
+        .sheet(isPresented: $showingSplitVFO) {
+            SplitVFOView()
+                .frame(width: 450, height: 200)
+        }
         .withSDRKeyboardShortcuts()
+        .onAppear {
+            // Restore session on startup
+            SessionManager.shared.restoreSession(to: sdrEngine, appState: appState)
+        }
+        .onDisappear {
+            // Save session on close
+            SessionManager.shared.saveSession(from: sdrEngine, appState: appState)
+        }
+        .onChange(of: sdrEngine.frequency) { _, newFreq in
+            // Record frequency changes to history
+            frequencyHistory.recordFrequency(newFreq, mode: sdrEngine.dspEngine.demodulationMode.rawValue)
+            // Sync VFO state
+            vfoManager.syncFromEngine()
+        }
+        .onChange(of: sdrEngine.dspEngine.spectrumData?.magnitudes) { _, newMagnitudes in
+            // Update peak hold
+            if let magnitudes = newMagnitudes {
+                peakHold.update(with: magnitudes)
+            }
+        }
     }
 }
 
@@ -260,12 +365,38 @@ struct SDRSettingsView: View {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
 
+            AudioProcessingSettingsView()
+                .tabItem {
+                    Label("Audio", systemImage: "waveform")
+                }
+
+            RemoteControlSettingsView()
+                .tabItem {
+                    Label("Remote", systemImage: "network")
+                }
+
             GeneralSettingsView()
                 .tabItem {
                     Label("General", systemImage: "gear")
                 }
         }
-        .frame(width: 500, height: 450)
+        .frame(width: 550, height: 550)
+    }
+}
+
+struct AudioProcessingSettingsView: View {
+    @ObservedObject var processor = AudioProcessor.shared
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                NoiseReductionView(nr: processor.noiseReduction)
+                NoiseBlankerView(nb: processor.noiseBlanker)
+                ToneDecoderView(decoder: processor.toneDecoder)
+                EqualizerView(eq: processor.equalizer)
+            }
+            .padding()
+        }
     }
 }
 
@@ -308,11 +439,14 @@ struct GeneralSettingsView: View {
 struct GlassSidebarView: View {
     @EnvironmentObject var sdrEngine: SDREngine
     @EnvironmentObject var appState: AppState
+    @ObservedObject var remoteServer = RemoteControlServer.shared
 
     @Binding var showingMemoryBank: Bool
     @Binding var showingScanner: Bool
     @Binding var showingRecording: Bool
     @Binding var showingSettings: Bool
+    @Binding var showingAudioProcessing: Bool
+    @Binding var showingSplitVFO: Bool
 
     var body: some View {
         ScrollView {
@@ -440,9 +574,49 @@ struct GlassSidebarView: View {
                 // Audio Card
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Label("Audio", systemImage: "speaker.wave.3")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.pink)
+                        HStack {
+                            Label("Audio", systemImage: "speaker.wave.3")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.pink)
+
+                            Spacer()
+
+                            // Mute button
+                            Button {
+                                sdrEngine.audioEngine.toggleMute()
+                            } label: {
+                                Image(systemName: sdrEngine.audioEngine.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(sdrEngine.audioEngine.isMuted ? .red : .pink)
+                            }
+                            .buttonStyle(.plain)
+                            .help(sdrEngine.audioEngine.isMuted ? "Unmute" : "Mute")
+                        }
+
+                        // Volume slider
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: "speaker.wave.1")
+                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 12))
+                                Text("Volume")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("\(Int(sdrEngine.audioEngine.volume * 100))%")
+                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(sdrEngine.audioEngine.isMuted ? .secondary : .primary)
+                            }
+                            Slider(value: $sdrEngine.audioEngine.volume, in: 0...1)
+                                .tint(sdrEngine.audioEngine.isMuted ? .gray : .pink)
+                                .disabled(sdrEngine.audioEngine.isMuted)
+                        }
+                        .padding(12)
+                        .background {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(.ultraThinMaterial.opacity(0.5))
+                                .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                        }
 
                         GlassToggle(isOn: $sdrEngine.dspEngine.squelchEnabled, label: "Squelch", icon: "speaker.slash")
 
@@ -476,7 +650,7 @@ struct GlassSidebarView: View {
                         GlassToggle(isOn: $sdrEngine.dspEngine.agcEnabled, label: "Audio AGC", icon: "wand.and.rays")
 
                         // Audio level meter
-                        GlassAudioMeter(level: sdrEngine.dspEngine.audioLevel)
+                        GlassAudioMeter(level: sdrEngine.audioEngine.isMuted ? 0 : sdrEngine.dspEngine.audioLevel)
                     }
                 }
 
@@ -531,6 +705,37 @@ struct GlassSidebarView: View {
                             }
                             FeatureButton(title: "Settings", icon: "gear", color: .gray, isActive: showingSettings) {
                                 showingSettings.toggle()
+                            }
+                        }
+                    }
+                }
+
+                // Advanced Features Card
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Advanced", systemImage: "sparkles")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.mint)
+
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 8) {
+                            FeatureButton(title: "Audio DSP", icon: "waveform", color: .purple, isActive: showingAudioProcessing) {
+                                showingAudioProcessing.toggle()
+                            }
+                            FeatureButton(title: "Split VFO", icon: "arrow.left.arrow.right", color: .cyan, isActive: showingSplitVFO) {
+                                showingSplitVFO.toggle()
+                            }
+                            FeatureButton(title: "Remote", icon: "network", color: .blue, isActive: remoteServer.isRunning) {
+                                if remoteServer.isRunning {
+                                    remoteServer.stop()
+                                } else {
+                                    try? remoteServer.start()
+                                }
+                            }
+                            FeatureButton(title: "Markers", icon: "mappin", color: .yellow, isActive: MarkerManager.shared.showMarkers) {
+                                MarkerManager.shared.showMarkers.toggle()
                             }
                         }
                     }
