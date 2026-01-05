@@ -1,0 +1,5 @@
+module LiquidDSPShim [system] {
+    header "liquid_shim.h"
+    link "liquid"
+    export *
+}

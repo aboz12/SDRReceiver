@@ -1,0 +1,5 @@
+module SoapySDRShim [system] {
+    header "soapy_shim.h"
+    link "SoapySDR"
+    export *
+}

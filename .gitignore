@@ -1,0 +1,15 @@
+# Build artifacts
+.build/
+.swiftpm/
+DerivedData/
+
+# App bundles (built from source)
+*.app/
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcuserstate
+*.xcworkspace/
+xcuserdata/
