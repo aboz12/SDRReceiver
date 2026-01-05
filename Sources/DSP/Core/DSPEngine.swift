@@ -77,6 +77,13 @@ public final class DSPEngine: ObservableObject {
         self.spectrumData = spectrum
         self.waterfallLine = WaterfallLine(from: spectrum)
 
+        // Debug: print every 100th update
+        if Int.random(in: 0..<100) == 0 {
+            let minMag = spectrum.magnitudes.min() ?? 0
+            let maxMag = spectrum.magnitudes.max() ?? 0
+            fputs("DSP: \(buffer.samples.count) samples, \(spectrum.magnitudes.count) bins, mag range: \(minMag) to \(maxMag)\n", stderr)
+        }
+
         // 1b. Run signal detection
         SignalDetector.shared.analyzeSpectrum(spectrum, centerFrequency: buffer.centerFrequency, sampleRate: buffer.sampleRate)
 
@@ -165,11 +172,14 @@ public final class DSPEngine: ObservableObject {
     /// Start processing with sample stream
     public func startProcessing(from stream: AsyncStream<IQSampleBuffer>) {
         isRunning = true
+        fputs("DSPEngine: startProcessing called\n", stderr)
         processingTask = Task { [weak self] in
+            fputs("DSPEngine: Entering for await loop\n", stderr)
             for await buffer in stream {
                 guard !Task.isCancelled else { break }
                 await self?.process(buffer)
             }
+            fputs("DSPEngine: Exited for await loop\n", stderr)
         }
     }
 

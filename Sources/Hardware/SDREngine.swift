@@ -13,8 +13,8 @@ public final class SDREngine: ObservableObject {
     @Published public private(set) var availableDevices: [String] = []
     @Published public private(set) var lastError: String?
 
-    // Frequency
-    @Published public var frequency: Double = 100_000_000 {
+    // Frequency - default to L-band Inmarsat AERO
+    @Published public var frequency: Double = 1_545_600_000 {
         didSet { applyFrequency() }
     }
 
@@ -31,6 +31,9 @@ public final class SDREngine: ObservableObject {
     @Published public var sampleRate: Double = 2_400_000 {
         didSet { applySampleRate() }
     }
+
+    // Bias-T (powers external LNA/antenna)
+    @Published public var biasTee: Bool = false
 
     // Available sample rates
     public let availableSampleRates: [Double] = [
@@ -69,8 +72,14 @@ public final class SDREngine: ObservableObject {
     public func start(deviceArgs: [String: String] = [:]) async throws {
         guard !isRunning else { return }
 
+        // Build device args including bias-t setting
+        var args = deviceArgs
+        if biasTee {
+            args["biastee"] = "1"
+        }
+
         // Create device
-        guard let dev = SoapySDRDeviceWrapper(args: deviceArgs) else {
+        guard let dev = SoapySDRDeviceWrapper(args: args) else {
             throw SDRDeviceError.deviceNotFound
         }
 
@@ -88,16 +97,24 @@ public final class SDREngine: ObservableObject {
         dev.sampleRate = sampleRate
         dev.bandwidth = sampleRate
 
+        // Apply bias-t setting (important for L-band LNA)
+        dev.biasTee = biasTee
+        print("SDREngine: Starting with Bias-T = \(biasTee)")
+
         // Start streaming
         try dev.startStreaming()
+        fputs("SDREngine: Streaming started\n", stderr)
 
         // Start audio
         try audioEngine.start()
+        fputs("SDREngine: Audio started\n", stderr)
 
         // Start DSP processing
+        fputs("SDREngine: Calling dspEngine.startProcessing\n", stderr)
         dspEngine.startProcessing(from: dev.sampleStream)
 
         isRunning = true
+        fputs("SDREngine: All started successfully\n", stderr)
         lastError = nil
     }
 

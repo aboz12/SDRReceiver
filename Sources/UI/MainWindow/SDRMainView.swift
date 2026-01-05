@@ -29,188 +29,127 @@ struct SDRMainView: View {
     @State private var showingRemoteControl = false
     @State private var showingSplitVFO = false
     @State private var bottomPanelHeight: CGFloat = 250
+    @State private var startError: String?
 
     var body: some View {
-        ZStack {
-            // Animated background
-            if themeManager.currentTheme.animationsEnabled {
-                LiquidGlassBackground(primaryColor: .blue, secondaryColor: .purple)
-            } else {
-                themeManager.currentTheme.colors.background.color
-                    .ignoresSafeArea()
+        VStack(spacing: 0) {
+            // Top bar
+            HStack {
+                Text("SDR Receiver")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Spacer()
+                Text(FrequencyFormatter.format(sdrEngine.frequency))
+                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    .foregroundColor(.cyan)
+                Spacer()
+                Text(sdrEngine.isRunning ? "RUNNING" : "STOPPED")
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(sdrEngine.isRunning ? Color.green : Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(4)
             }
+            .padding()
+            .background(Color.black)
 
             // Main content
-            HSplitView {
-                // Left sidebar - Glass control panel
-                GlassSidebarView(
-                    showingMemoryBank: $showingMemoryBank,
-                    showingScanner: $showingScanner,
-                    showingRecording: $showingRecording,
-                    showingSettings: $showingSettings,
-                    showingAudioProcessing: $showingAudioProcessing,
-                    showingSplitVFO: $showingSplitVFO
-                )
-                .frame(minWidth: 280, maxWidth: 350)
-
-                // Main content area
-                VStack(spacing: 0) {
-                    // VFO Bar with history navigation
-                    HStack(spacing: 12) {
-                        // History navigation
-                        FrequencyHistoryNav { entry in
-                            sdrEngine.tuneTo(entry.frequency)
-                            if let mode = DemodulationMode(rawValue: entry.mode) {
-                                sdrEngine.dspEngine.demodulationMode = mode
-                            }
-                        }
-
-                        // Split VFO selector
-                        if showingSplitVFO {
-                            CompactSplitVFOSelector()
-                        }
-
-                        MultiVFOView()
-
-                        Spacer()
-
-                        // Remote control indicator
-                        if remoteServer.isRunning {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(.green)
-                                    .frame(width: 6, height: 6)
-                                Text("Remote")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.ultraThinMaterial.opacity(0.5))
-                            .cornerRadius(6)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-
-                    // Frequency bar
-                    GlassFrequencyBar()
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-
-                    // Frequency presets bar
-                    if showingPresets {
-                        FrequencyPresetsView { preset in
-                            sdrEngine.tuneTo(preset.frequency)
-                            if let mode = DemodulationMode(rawValue: preset.mode) {
-                                sdrEngine.dspEngine.demodulationMode = mode
-                            }
-                            sdrEngine.dspEngine.filterBandwidth = preset.bandwidth
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-                    }
-
-                    // Spectrum and Waterfall
-                    GeometryReader { geometry in
-                        VSplitView {
-                            VStack(spacing: 0) {
-                                // Band plan overlay
-                                if showBandPlan {
-                                    BandPlanOverlay(
-                                        visibleRange: sdrEngine.visibleFrequencyRange,
-                                        width: geometry.size.width - 32
-                                    )
-                                    .padding(.horizontal, 16)
-                                }
-
-                                VStack(spacing: 12) {
-                                    // Spectrum display
-                                    if appState.showSpectrum {
-                                        ZStack(alignment: .topTrailing) {
-                                            ZStack {
-                                                InteractiveSpectrumView(dspEngine: sdrEngine.dspEngine)
-                                                    .sdrContextMenu(
-                                                        frequency: sdrEngine.frequency,
-                                                        signalStrength: sdrEngine.dspEngine.signalStrength
-                                                    )
-
-                                                // Peak hold overlay
-                                                if peakHold.enabled, let spectrum = sdrEngine.dspEngine.spectrumData {
-                                                    EnhancedSpectrumOverlay(
-                                                        centerFrequency: sdrEngine.frequency,
-                                                        sampleRate: sdrEngine.sampleRate,
-                                                        spectrumData: spectrum.magnitudes
-                                                    )
-                                                }
-                                            }
-                                            .background {
-                                                GlassPanel(cornerRadius: 16, tintColor: .green) {
-                                                    Color.clear
-                                                }
-                                            }
-
-                                            // Spectrum controls overlay
-                                            VStack(alignment: .trailing, spacing: 8) {
-                                                HStack(spacing: 8) {
-                                                    Toggle("Band Plan", isOn: $showBandPlan)
-                                                        .toggleStyle(.checkbox)
-                                                        .font(.system(size: 10))
-
-                                                    SampleRatePicker()
-                                                }
-                                                .padding(8)
-                                                .background(.ultraThinMaterial)
-                                                .cornerRadius(8)
-
-                                                HStack(spacing: 8) {
-                                                    PeakHoldControlsView()
-                                                    ZoomControlsView()
-                                                }
-                                            }
-                                            .padding(8)
-                                        }
-                                        .frame(height: geometry.size.height * 0.35)
-                                    }
-
-                                    // Waterfall display
-                                    if appState.showWaterfall {
-                                        InteractiveWaterfallView(dspEngine: sdrEngine.dspEngine)
-                                            .background {
-                                                GlassPanel(cornerRadius: 16, tintColor: .blue) {
-                                                    Color.clear
-                                                }
-                                            }
+            HStack(spacing: 0) {
+                // Sidebar
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Start/Stop button
+                        Button(action: {
+                            Task {
+                                if sdrEngine.isRunning {
+                                    sdrEngine.stop()
+                                } else {
+                                    do {
+                                        try await sdrEngine.start()
+                                        print("SDR Started successfully")
+                                    } catch {
+                                        print("SDR Start Error: \(error)")
+                                        startError = error.localizedDescription
                                     }
                                 }
-                                .padding(16)
                             }
-
-                            // Bottom panel (decoders, scanner, etc.)
-                            if showingDecoders || showingScanner || showingRecording {
-                                BottomPanelView(
-                                    showingDecoders: $showingDecoders,
-                                    showingScanner: $showingScanner,
-                                    showingRecording: $showingRecording
-                                )
-                                .frame(minHeight: 200, maxHeight: 400)
+                        }) {
+                            HStack {
+                                Image(systemName: sdrEngine.isRunning ? "stop.fill" : "play.fill")
+                                Text(sdrEngine.isRunning ? "Stop" : "Start")
                             }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(sdrEngine.isRunning ? Color.red : Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
                         }
+                        .buttonStyle(.plain)
+
+                        // Show error if any
+                        if let error = startError {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .padding(4)
+                        }
+
+                        // Bias-T button
+                        Button(action: {
+                            sdrEngine.biasTee.toggle()
+                            let newValue = sdrEngine.biasTee
+                            if !sdrEngine.isRunning {
+                                Task.detached {
+                                    RTLSDRBiasT.shared.setBiasTee(enabled: newValue)
+                                }
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "bolt.fill")
+                                Text("Bias-T: \(sdrEngine.biasTee ? "ON" : "OFF")")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(sdrEngine.biasTee ? Color.yellow : Color.gray)
+                            .foregroundColor(sdrEngine.biasTee ? .black : .white)
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+
+                        Divider()
+
+                        Text("Gain: \(Int(sdrEngine.gain)) dB")
+                            .foregroundColor(.white)
+                        Slider(value: $sdrEngine.gain, in: 0...50)
+
+                        Text("Volume")
+                            .foregroundColor(.white)
+                        Slider(value: $sdrEngine.audioEngine.volume, in: 0...1)
                     }
-
-                    // Bottom status bar
-                    GlassStatusBar()
+                    .padding()
                 }
+                .frame(width: 250)
+                .background(Color(white: 0.15))
 
-                // Right sidebar (memory bank)
-                if showingMemoryBank {
-                    MemoryBankView()
-                        .frame(minWidth: 250, maxWidth: 350)
-                        .background(.ultraThinMaterial.opacity(0.3))
+                // Spectrum and Waterfall
+                VStack(spacing: 8) {
+                    // SPECTRUM
+                    InteractiveSpectrumView(dspEngine: sdrEngine.dspEngine)
+                        .frame(height: 200)
+                        .background(Color.black)
+                        .border(Color.green, width: 2)
+
+                    // WATERFALL
+                    InteractiveWaterfallView(dspEngine: sdrEngine.dspEngine)
+                        .frame(minHeight: 300)
+                        .background(Color.black)
+                        .border(Color.blue, width: 2)
                 }
+                .padding()
             }
         }
-        .toolbar(content: {
+        .background(Color.black)
+        .toolbar {
             GlassToolbar(
                 showingDecoders: $showingDecoders,
                 showingScanner: $showingScanner,
@@ -218,7 +157,7 @@ struct SDRMainView: View {
                 showingStreaming: $showingStreaming,
                 showingSettings: $showingSettings
             )
-        })
+        }
         .sheet(isPresented: $showingSettings) {
             SDRSettingsView()
         }
@@ -478,6 +417,47 @@ struct GlassSidebarView: View {
                                 .foregroundColor(.secondary)
                         }
 
+                        // Bias-T button
+                        Button {
+                            // Run bias-t command directly
+                            let newState = !sdrEngine.biasTee
+                            Task.detached {
+                                let success = RTLSDRBiasT.shared.setBiasTee(enabled: newState)
+                                await MainActor.run {
+                                    if success {
+                                        sdrEngine.biasTee = newState
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bolt.fill")
+                                    .foregroundColor(sdrEngine.biasTee ? .yellow : .secondary)
+                                    .font(.system(size: 14))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Bias-T (LNA Power)")
+                                        .font(.system(size: 12, weight: .medium))
+                                    Text(sdrEngine.biasTee ? "ON" : "OFF")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(sdrEngine.biasTee ? .yellow : .secondary)
+                                }
+
+                                Spacer()
+
+                                Circle()
+                                    .fill(sdrEngine.biasTee ? Color.yellow : Color.gray.opacity(0.3))
+                                    .frame(width: 12, height: 12)
+                            }
+                            .padding(10)
+                            .background {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(sdrEngine.biasTee ? Color.yellow.opacity(0.15) : Color.white.opacity(0.05))
+                                    .strokeBorder(sdrEngine.biasTee ? Color.yellow.opacity(0.5) : Color.white.opacity(0.1), lineWidth: 1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
                         GlassButton("Scan Devices", icon: "magnifyingglass", tint: .cyan) {
                             sdrEngine.refreshDevices()
                         }
@@ -506,6 +486,9 @@ struct GlassSidebarView: View {
                         }
                     }
                 }
+
+                // L-Band Satellite Panel
+                LBandPanel()
 
                 // Gain Card
                 GlassCard {

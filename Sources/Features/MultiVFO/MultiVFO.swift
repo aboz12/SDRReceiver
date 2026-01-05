@@ -206,8 +206,8 @@ public final class MultiVFOManager: ObservableObject {
 
     private func createDefaultVFOs() {
         vfos = [
-            VFO(name: "VFO-A", frequency: 100_000_000, isActive: true, color: "cyan"),
-            VFO(name: "VFO-B", frequency: 144_000_000, isActive: false, color: "green")
+            VFO(name: "VFO-A", frequency: 1_545_600_000, isActive: true, color: "cyan"),
+            VFO(name: "VFO-B", frequency: 1_546_000_000, isActive: false, color: "green")
         ]
         saveVFOs()
     }

@@ -142,7 +142,8 @@ struct DeviceSettingsView: View {
 
             Section("RTL-SDR") {
                 Toggle("Direct Sampling", isOn: .constant(false))
-                Toggle("Bias Tee", isOn: .constant(false))
+                Toggle("Bias Tee (LNA Power)", isOn: $sdrEngine.biasTee)
+                    .help("Enable 4.5V DC on antenna port to power external LNA")
             }
         }
         .formStyle(.grouped)

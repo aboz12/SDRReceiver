@@ -14,7 +14,7 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
     private let streamContinuation: AsyncStream<IQSampleBuffer>.Continuation?
     private let _sampleStream: AsyncStream<IQSampleBuffer>
 
-    private var _centerFrequency: Double = 100_000_000
+    private var _centerFrequency: Double = 1_545_600_000
     private var _sampleRate: Double = 2_400_000
     private var _bandwidth: Double = 2_400_000
     private var _gain: Double = 30
@@ -23,6 +23,7 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
     private var _dcOffsetCorrection: Bool = true
     private var _iqBalanceCorrection: Bool = false
     private var _ppmCorrection: Double = 0
+    private var _biasTee: Bool = false
     private var _isStreaming: Bool = false
 
     public var isConnected: Bool { device != nil }
@@ -99,17 +100,23 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
         }
     }
 
+    public var biasTee: Bool {
+        get { _biasTee }
+        set {
+            _biasTee = newValue
+            applyBiasTee()
+        }
+    }
+
     public var sampleStream: AsyncStream<IQSampleBuffer> {
         _sampleStream
     }
 
     /// Initialize with device arguments
     public init?(args: [String: String] = [:]) {
-        // Create sample stream
-        var continuation: AsyncStream<IQSampleBuffer>.Continuation?
-        _sampleStream = AsyncStream { cont in
-            continuation = cont
-        }
+        // Create sample stream using makeStream for proper continuation capture
+        let (stream, continuation) = AsyncStream<IQSampleBuffer>.makeStream()
+        _sampleStream = stream
         self.streamContinuation = continuation
 
         // Build args string
@@ -256,6 +263,45 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
         SoapySDRDevice_setFrequencyCorrection(dev, SOAPY_SDR_RX, 0, _ppmCorrection)
     }
 
+    private func applyBiasTee() {
+        guard let dev = device else { return }
+        // Bias-T is controlled via device settings
+        // Try multiple setting names for compatibility across drivers
+        let value = _biasTee ? "true" : "false"
+        let value1 = _biasTee ? "1" : "0"
+
+        // RTL-SDR Blog V4 and SoapyRTLSDR use "biastee"
+        "biastee".withCString { keyPtr in
+            value.withCString { valuePtr in
+                SoapySDRDevice_writeSetting(dev, keyPtr, valuePtr)
+            }
+        }
+
+        // Try with numeric value
+        "biastee".withCString { keyPtr in
+            value1.withCString { valuePtr in
+                SoapySDRDevice_writeSetting(dev, keyPtr, valuePtr)
+            }
+        }
+
+        // Also try "bias_tee" for compatibility
+        "bias_tee".withCString { keyPtr in
+            value.withCString { valuePtr in
+                SoapySDRDevice_writeSetting(dev, keyPtr, valuePtr)
+            }
+        }
+
+        // Try direct GPIO for RTL-SDR (GPIO 0 controls bias-t on V3/V4)
+        "direct_samp".withCString { keyPtr in
+            "0".withCString { valuePtr in
+                // Ensure direct sampling is off
+                SoapySDRDevice_writeSetting(dev, keyPtr, valuePtr)
+            }
+        }
+
+        print("SoapySDR: Bias-T set to \(_biasTee)")
+    }
+
     // MARK: - Streaming
 
     public func startStreaming() throws {
@@ -282,6 +328,7 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
         }
 
         _isStreaming = true
+        fputs("SoapySDR: Stream activated, starting loop...\n", stderr)
 
         // Start background reading task
         streamTask = Task { [weak self] in
@@ -290,19 +337,29 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
     }
 
     private func streamLoop() async {
-        guard let dev = device, let strm = stream else { return }
+        guard let dev = device, let strm = stream else {
+            fputs("SoapySDR: streamLoop - device or stream is nil!\n", stderr)
+            return
+        }
+        fputs("SoapySDR: streamLoop started\n", stderr)
 
         let bufferSize = 65536
         var buffer = [Float](repeating: 0, count: bufferSize * 2)  // I/Q interleaved
         var flags: Int32 = 0
         var timeNs: Int64 = 0
 
+        var debugCounter = 0
         while !Task.isCancelled && _isStreaming {
             let samplesRead = buffer.withUnsafeMutableBufferPointer { bufPtr in
                 var buffers: [UnsafeMutableRawPointer?] = [UnsafeMutableRawPointer(bufPtr.baseAddress)]
                 return buffers.withUnsafeMutableBufferPointer { buffersPtr in
                     SoapySDRDevice_readStream(dev, strm, buffersPtr.baseAddress, bufferSize, &flags, &timeNs, 100000)
                 }
+            }
+
+            debugCounter += 1
+            if debugCounter % 100 == 1 {
+                fputs("SoapySDR: readStream returned \(samplesRead) samples\n", stderr)
             }
 
             if samplesRead > 0 {
@@ -324,7 +381,16 @@ public final class SoapySDRDeviceWrapper: SDRDevice {
                     overflowDetected: (flags & Int32(SOAPY_SDR_OVERFLOW)) != 0
                 )
 
-                streamContinuation?.yield(iqBuffer)
+                if let cont = streamContinuation {
+                    cont.yield(iqBuffer)
+                    if debugCounter % 100 == 1 {
+                        fputs("SoapySDR: Yielded buffer with \(count) samples\n", stderr)
+                    }
+                } else {
+                    if debugCounter % 100 == 1 {
+                        fputs("SoapySDR: WARNING - streamContinuation is nil!\n", stderr)
+                    }
+                }
             }
 
             // Small yield to prevent tight loop

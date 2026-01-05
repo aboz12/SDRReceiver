@@ -23,6 +23,9 @@ public protocol SDRDevice: AnyObject, Identifiable {
     var iqBalanceCorrection: Bool { get set }
     var ppmCorrection: Double { get set }
 
+    // Bias-T (powers external LNA via antenna port)
+    var biasTee: Bool { get set }
+
     // Streaming
     func startStreaming() throws
     func stopStreaming()

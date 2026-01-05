@@ -358,6 +358,19 @@ public final class FrequencyPresetManager: ObservableObject {
             FrequencyPreset(name: "ISS Voice", frequency: 145_800_000, mode: "FM", bandwidth: 12500, category: "Satellite", icon: "sparkles"),
             FrequencyPreset(name: "ISS APRS", frequency: 145_825_000, mode: "FM", bandwidth: 12500, category: "Satellite", icon: "sparkles"),
 
+            // L-Band Satellite
+            FrequencyPreset(name: "Inmarsat-C", frequency: 1_537_500_000, mode: "RAW", bandwidth: 40000, category: "L-Band", icon: "globe"),
+            FrequencyPreset(name: "Inmarsat AERO", frequency: 1_545_000_000, mode: "RAW", bandwidth: 100000, category: "L-Band", icon: "globe"),
+            FrequencyPreset(name: "Inmarsat STD-C EGC", frequency: 1_541_450_000, mode: "RAW", bandwidth: 20000, category: "L-Band", icon: "globe"),
+            FrequencyPreset(name: "Inmarsat 4F3", frequency: 1_542_500_000, mode: "RAW", bandwidth: 200000, category: "L-Band", icon: "globe"),
+            FrequencyPreset(name: "Iridium Ring", frequency: 1_626_270_833, mode: "RAW", bandwidth: 50000, category: "L-Band", icon: "antenna.radiowaves.left.and.right"),
+            FrequencyPreset(name: "Iridium Main", frequency: 1_621_000_000, mode: "RAW", bandwidth: 100000, category: "L-Band", icon: "antenna.radiowaves.left.and.right"),
+            FrequencyPreset(name: "Iridium Simplex", frequency: 1_626_104_000, mode: "RAW", bandwidth: 25000, category: "L-Band", icon: "antenna.radiowaves.left.and.right"),
+            FrequencyPreset(name: "GPS L1", frequency: 1_575_420_000, mode: "RAW", bandwidth: 2000000, category: "L-Band", icon: "location.circle"),
+            FrequencyPreset(name: "GLONASS L1", frequency: 1_602_000_000, mode: "RAW", bandwidth: 2000000, category: "L-Band", icon: "location.circle"),
+            FrequencyPreset(name: "Globalstar", frequency: 1_614_000_000, mode: "RAW", bandwidth: 100000, category: "L-Band", icon: "globe.americas"),
+            FrequencyPreset(name: "Thuraya", frequency: 1_548_000_000, mode: "RAW", bandwidth: 100000, category: "L-Band", icon: "globe.europe.africa"),
+
             // Utility
             FrequencyPreset(name: "POCSAG", frequency: 153_350_000, mode: "FM", bandwidth: 12500, category: "Utility", icon: "bell"),
             FrequencyPreset(name: "LoRa 433", frequency: 433_775_000, mode: "RAW", bandwidth: 125000, category: "Utility", icon: "wifi"),
@@ -873,5 +886,265 @@ public struct MiniModeView: View {
         if index < 6 { return .green }
         if index < 8 { return .yellow }
         return .red
+    }
+}
+
+// MARK: - L-Band Panel
+
+public struct LBandFrequency: Identifiable {
+    public let id = UUID()
+    public let name: String
+    public let frequency: Double
+    public let bandwidth: Double
+    public let description: String
+    public let icon: String
+    public let category: LBandCategory
+
+    public enum LBandCategory: String, CaseIterable {
+        case inmarsat = "Inmarsat"
+        case iridium = "Iridium"
+        case gps = "GNSS"
+        case other = "Other"
+
+        var color: Color {
+            switch self {
+            case .inmarsat: return .blue
+            case .iridium: return .purple
+            case .gps: return .green
+            case .other: return .orange
+            }
+        }
+    }
+}
+
+@MainActor
+public final class LBandManager: ObservableObject {
+    public static let shared = LBandManager()
+
+    public let frequencies: [LBandFrequency] = [
+        // Inmarsat
+        LBandFrequency(name: "Inmarsat-C", frequency: 1_537_500_000, bandwidth: 40000,
+                      description: "Maritime safety & messaging", icon: "ferry", category: .inmarsat),
+        LBandFrequency(name: "Inmarsat AERO", frequency: 1_545_000_000, bandwidth: 100000,
+                      description: "Aircraft voice & data", icon: "airplane", category: .inmarsat),
+        LBandFrequency(name: "Inmarsat STD-C EGC", frequency: 1_541_450_000, bandwidth: 20000,
+                      description: "Enhanced Group Call", icon: "globe", category: .inmarsat),
+        LBandFrequency(name: "Inmarsat 4F3 (AOR-W)", frequency: 1_542_500_000, bandwidth: 200000,
+                      description: "Atlantic Ocean West", icon: "globe.americas", category: .inmarsat),
+        LBandFrequency(name: "Inmarsat 3F2 (AOR-E)", frequency: 1_537_700_000, bandwidth: 200000,
+                      description: "Atlantic Ocean East", icon: "globe.europe.africa", category: .inmarsat),
+        LBandFrequency(name: "Inmarsat 3F1 (IOR)", frequency: 1_537_100_000, bandwidth: 200000,
+                      description: "Indian Ocean Region", icon: "globe.asia.australia", category: .inmarsat),
+        LBandFrequency(name: "Inmarsat 4F1 (POR)", frequency: 1_541_000_000, bandwidth: 200000,
+                      description: "Pacific Ocean Region", icon: "globe", category: .inmarsat),
+
+        // Iridium
+        LBandFrequency(name: "Iridium Ring Alert", frequency: 1_626_270_833, bandwidth: 50000,
+                      description: "Paging & signaling", icon: "bell", category: .iridium),
+        LBandFrequency(name: "Iridium Main", frequency: 1_621_000_000, bandwidth: 100000,
+                      description: "Voice & data center", icon: "phone", category: .iridium),
+        LBandFrequency(name: "Iridium Simplex", frequency: 1_626_104_000, bandwidth: 25000,
+                      description: "Simplex data", icon: "arrow.up", category: .iridium),
+        LBandFrequency(name: "Iridium Band Start", frequency: 1_616_000_000, bandwidth: 100000,
+                      description: "Band lower edge", icon: "antenna.radiowaves.left.and.right", category: .iridium),
+        LBandFrequency(name: "Iridium Band End", frequency: 1_626_500_000, bandwidth: 100000,
+                      description: "Band upper edge", icon: "antenna.radiowaves.left.and.right", category: .iridium),
+
+        // GNSS
+        LBandFrequency(name: "GPS L1", frequency: 1_575_420_000, bandwidth: 2000000,
+                      description: "GPS civilian signal", icon: "location.circle", category: .gps),
+        LBandFrequency(name: "GPS L2", frequency: 1_227_600_000, bandwidth: 2000000,
+                      description: "GPS precision signal", icon: "location.circle", category: .gps),
+        LBandFrequency(name: "GLONASS L1", frequency: 1_602_000_000, bandwidth: 8000000,
+                      description: "Russian GNSS L1", icon: "location.circle.fill", category: .gps),
+        LBandFrequency(name: "Galileo E1", frequency: 1_575_420_000, bandwidth: 4000000,
+                      description: "European GNSS", icon: "location.north.circle", category: .gps),
+
+        // Other L-Band
+        LBandFrequency(name: "Globalstar", frequency: 1_614_000_000, bandwidth: 100000,
+                      description: "Satellite phone", icon: "phone.circle", category: .other),
+        LBandFrequency(name: "Thuraya", frequency: 1_548_000_000, bandwidth: 100000,
+                      description: "Regional satphone", icon: "phone.circle", category: .other),
+        LBandFrequency(name: "Orbcomm", frequency: 1_545_800_000, bandwidth: 50000,
+                      description: "IoT satellite", icon: "network", category: .other),
+    ]
+
+    private init() {}
+
+    public func frequencies(for category: LBandFrequency.LBandCategory) -> [LBandFrequency] {
+        frequencies.filter { $0.category == category }
+    }
+}
+
+public struct LBandPanel: View {
+    @ObservedObject var manager = LBandManager.shared
+    @EnvironmentObject var sdrEngine: SDREngine
+    @State private var selectedCategory: LBandFrequency.LBandCategory?
+    @State private var isExpanded = false
+
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            Button {
+                withAnimation(.spring(response: 0.3)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "globe")
+                        .font(.system(size: 14))
+                        .foregroundColor(.cyan)
+                    Text("L-Band")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.cyan)
+
+                    Spacer()
+
+                    Text("1.5-1.7 GHz")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                // Category filter
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        CategoryChip(name: "All", isSelected: selectedCategory == nil, color: .white) {
+                            selectedCategory = nil
+                        }
+
+                        ForEach(LBandFrequency.LBandCategory.allCases, id: \.self) { category in
+                            CategoryChip(
+                                name: category.rawValue,
+                                isSelected: selectedCategory == category,
+                                color: category.color
+                            ) {
+                                selectedCategory = category
+                            }
+                        }
+                    }
+                }
+
+                // Frequency grid
+                let filteredFreqs = selectedCategory.map { manager.frequencies(for: $0) } ?? manager.frequencies
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(filteredFreqs) { freq in
+                        LBandButton(frequency: freq) {
+                            sdrEngine.tuneTo(freq.frequency)
+                            sdrEngine.dspEngine.filterBandwidth = freq.bandwidth
+                            // Use RAW mode for L-band
+                            sdrEngine.dspEngine.demodulationMode = .raw
+                        }
+                    }
+                }
+
+                // Quick info
+                HStack(spacing: 16) {
+                    InfoBadge(label: "Inmarsat", value: "1525-1559", color: .blue)
+                    InfoBadge(label: "Iridium", value: "1616-1627", color: .purple)
+                    InfoBadge(label: "GPS", value: "1575 MHz", color: .green)
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .cornerRadius(12)
+    }
+}
+
+struct CategoryChip: View {
+    let name: String
+    let isSelected: Bool
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(name)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(isSelected ? .white : color)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background {
+                    Capsule()
+                        .fill(isSelected ? color : color.opacity(0.2))
+                }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct LBandButton: View {
+    let frequency: LBandFrequency
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: frequency.icon)
+                        .font(.system(size: 12))
+                        .foregroundColor(frequency.category.color)
+
+                    Text(frequency.name)
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                }
+
+                Text(formatFrequency(frequency.frequency))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.cyan)
+
+                Text(frequency.description)
+                    .font(.system(size: 8))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovered ? frequency.category.color.opacity(0.2) : Color.black.opacity(0.2))
+                    .strokeBorder(frequency.category.color.opacity(0.3), lineWidth: 0.5)
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+
+    private func formatFrequency(_ freq: Double) -> String {
+        let mhz = freq / 1_000_000
+        return String(format: "%.3f MHz", mhz)
+    }
+}
+
+struct InfoBadge: View {
+    let label: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .font(.system(size: 8))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundColor(color)
+        }
     }
 }

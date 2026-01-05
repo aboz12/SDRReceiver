@@ -77,14 +77,18 @@ public final class FFTProcessor {
             }
         }
 
-        // Convert to dB
+        // Convert to dB (dBFS - dB relative to full scale)
         var logMagnitudes = [Float](repeating: 0, count: fftSize / 2)
-        var one: Float = 1e-10  // Prevent log(0)
-        vDSP_vsadd(magnitudes, 1, &one, &magnitudes, 1, vDSP_Length(fftSize / 2))
-        vDSP_vdbcon(magnitudes, 1, &one, &logMagnitudes, 1, vDSP_Length(fftSize / 2), 0)
+        var small: Float = 1e-20  // Prevent log(0)
+        vDSP_vsadd(magnitudes, 1, &small, &magnitudes, 1, vDSP_Length(fftSize / 2))
 
-        // Scale (FFT produces values that need normalization)
-        var scale = Float(-10)  // Offset for display
+        // Convert to dB: 10*log10(magnitude)
+        var reference: Float = 1.0
+        vDSP_vdbcon(magnitudes, 1, &reference, &logMagnitudes, 1, vDSP_Length(fftSize / 2), 0)
+
+        // Normalize: FFT size scaling and offset to get dBFS in range -120 to 0
+        // Subtract FFT gain (10*log10(fftSize^2)) and add offset
+        var scale = Float(-10 * log10(Float(fftSize * fftSize))) - 20  // Normalize and offset
         vDSP_vsadd(logMagnitudes, 1, &scale, &logMagnitudes, 1, vDSP_Length(fftSize / 2))
 
         // Apply averaging

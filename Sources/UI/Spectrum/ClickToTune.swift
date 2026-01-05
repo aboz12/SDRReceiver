@@ -49,12 +49,13 @@ public struct InteractiveSpectrumView: View {
     @State private var markerPosition: CGPoint = .zero
 
     public var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Spectrum display
-                Canvas { context, size in
-                    drawSpectrum(context: context, size: size)
-                }
+        TimelineView(.animation(minimumInterval: 1.0/30.0)) { timeline in
+            GeometryReader { geometry in
+                ZStack {
+                    // Spectrum display
+                    Canvas { context, size in
+                        drawSpectrum(context: context, size: size)
+                    }
 
                 // Frequency marker on hover/click
                 if showFrequencyMarker, let freq = hoverFrequency {
@@ -102,18 +103,35 @@ public struct InteractiveSpectrumView: View {
                             showFrequencyMarker = false
                         }
                     }
+                }
             }
         }
     }
 
     private func drawSpectrum(context: GraphicsContext, size: CGSize) {
-        guard let spectrum = dspEngine.spectrumData, !spectrum.isEmpty else { return }
+        // Draw solid black background
+        context.fill(
+            Path(CGRect(origin: .zero, size: size)),
+            with: .color(.black)
+        )
+
+        // Always draw grid
+        drawGrid(context: context, size: size)
+
+        // Check for spectrum data
+        guard let spectrum = dspEngine.spectrumData, !spectrum.isEmpty else {
+            // Draw placeholder text when no data
+            context.draw(
+                Text("Spectrum - Click START to begin")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.green),
+                at: CGPoint(x: size.width / 2, y: size.height / 2)
+            )
+            return
+        }
 
         let magnitudes = spectrum.magnitudes
         let count = magnitudes.count
-
-        // Draw grid
-        drawGrid(context: context, size: size)
 
         // Draw spectrum
         var path = Path()
@@ -265,14 +283,15 @@ public struct InteractiveWaterfallView: View {
     private let maxLines = 200
 
     public var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Waterfall display
-                Canvas { context, size in
-                    drawWaterfall(context: context, size: size)
-                }
+        TimelineView(.animation(minimumInterval: 1.0/30.0)) { timeline in
+            GeometryReader { geometry in
+                ZStack {
+                    // Waterfall display
+                    Canvas { context, size in
+                        drawWaterfall(context: context, size: size)
+                    }
 
-                // Frequency marker
+                    // Frequency marker
                 if showMarker, let freq = hoverFrequency {
                     VStack {
                         Text(FrequencyFormatter.format(freq))
@@ -313,6 +332,7 @@ public struct InteractiveWaterfallView: View {
                             showMarker = false
                         }
                     }
+                }
             }
         }
         .onChange(of: dspEngine.waterfallLine?.id) { _, _ in
@@ -326,7 +346,22 @@ public struct InteractiveWaterfallView: View {
     }
 
     private func drawWaterfall(context: GraphicsContext, size: CGSize) {
-        guard !waterfallLines.isEmpty else { return }
+        // Draw solid black background first
+        context.fill(
+            Path(CGRect(origin: .zero, size: size)),
+            with: .color(.black)
+        )
+
+        guard !waterfallLines.isEmpty else {
+            // Draw placeholder text
+            context.draw(
+                Text("Waterfall - Click START to begin")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.cyan),
+                at: CGPoint(x: size.width / 2, y: size.height / 2)
+            )
+            return
+        }
 
         let lineHeight = size.height / CGFloat(maxLines)
         let colorScheme = themeManager.currentTheme.waterfallColorScheme
